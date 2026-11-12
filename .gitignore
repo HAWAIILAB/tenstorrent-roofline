@@ -1,0 +1,14 @@
+# Build artifacts
+
+build/
+.venv/
+__pycache__/
+*.pyc
+
+# Other folders
+
+results/
+results_*/
+paper/*
+!paper/figures/
+*.local.md
