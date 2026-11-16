@@ -15,6 +15,8 @@ tenstorrent-roofline/
 ├── run_batch1.sh        - profiler-off rerun of everything + peak_flops_block, out-of-box inputs, repeats
 ├── run_batch2.sh        - dram_add + TTNN add/exp in the same session, matmul repeats
 ├── run_repeats.sh       - repeats of the headline benchmarks (called by run_batch1.sh)
+├── run_smi.sh           - matmul while logging tt-smi telemetry
+├── run_repeats_random.sh - random input matmul matrix 10 times with telemetry
 ├── paper/figures/       - paper figures
 ├── benchmarks/          - benchmarks source
 ├── plots/               - plots
@@ -31,6 +33,8 @@ tenstorrent-roofline/
   for your own image, or run the built binaries directly on a host that
   already has the SDK available)
 - Python 3 + `ttnn` (only needed for `benchmarks/ttnn_ops/bench_ttnn_ops.py`)
+- `tt-smi` on the host (only needed for `run_smi.sh` and `run_repeats_random.sh`,
+  set path with `TT_SMI=...`)
 
 ## Running
 
@@ -56,14 +60,26 @@ srun -w csg-torrent -p torrent --gres=tt:n300s:4 --time=02:00:00 --pty bash -lc 
 ```
 run_batch2.sh works the same way. Without --time, Slurm rejects the job on this cluster. That limit probably applies to your original srun lines too.
 
+The telemetry runs poll `tt-smi -s` in the background and write `telemetry.csv`
+next to the benchmark output (results_<date>_smi/ and results_<date>_random10/):
+
+```
+srun -w csg-torrent -p torrent --gres=tt:n300s:4 --time=01:00:00 --pty bash -lc 'cd /csghome/sc323/tt-analysis && bash run_smi.sh'
+srun -w csg-torrent -p torrent --gres=tt:n300s:4 --time=03:00:00 --pty bash -lc 'cd /csghome/sc323/tt-analysis && bash run_repeats_random.sh'
+```
+
 
 ## Plotting
 
 ```
-uv run --no-project --with matplotlib --with numpy python plots/plot_paper_roofline.py results_2026-11-11_rep2 paper/figures results_2026-10-31_batch3
-uv run --no-project --with matplotlib --with numpy python plots/plot_paper_figures.py results_2026-11-11_rep2 results_2026-10-31_batch3
+uv run --no-project --with matplotlib --with numpy python plots/plot_paper_roofline.py results_2026-11-11_rep2 paper/figures results_2026-10-31_batch3 results_2026-11-14_random10
+uv run --no-project --with matplotlib --with numpy python plots/plot_paper_figures.py results_2026-11-14_random10 results_2026-10-31_batch3
+uv run --no-project --with matplotlib python plots/plot_clock.py results_2026-11-14_random10 2
 pdflatex -output-directory=paper/figures plots/noc_routing.tex
 ```
+
+The matmul plots use the median over all `peak_flops_block_matrix*.csv` in the
+given folder. `plot_clock.py` plots clock and power during one run.
 
 Running this on another machine, you will have to edit `THESIS`/`TT_METAL`/`CONTAINER`
 in `run_benchmarks.sh` to point at your own paths, or skip the
