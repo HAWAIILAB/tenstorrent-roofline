@@ -4,10 +4,10 @@ Bar charts for the paper
 
 Usage:
     python3 plots/plot_paper_figures.py <block_results_dir> <dram_add_dir> [out_dir]
-    e.g. results_2026-11-11_rep2 results_2026-10-31_batch3 (out_dir default: paper/figures/)
+    e.g. results_2026-11-14_random10 results_2026-10-31_batch3 (out_dir default: paper/figures/)
 
 matmul_block.pdf  matmul_tiles vs best matmul_block shape, every format x fidelity
-                  (from peak_flops_block_matrix.csv)
+                  (from peak_flops_block_matrix*.csv, median over runs)
 dram_noc.pdf      copy/add with our vs tt-metal's reader/writer NOCs, next to TTNN
                   (from dram_add_*.csv and ttnn_ops.csv)
 """
@@ -62,6 +62,23 @@ def read_csv(path):
         return list(csv.DictReader(f))
 
 
+def matrix_rows(folder):
+    runs = {}
+    for path in sorted(folder.glob("peak_flops_block_matrix*.csv")):
+        for r in read_csv(path):
+            key = (r["kernel"], r["data_format"], r["math_fidelity"])
+            runs.setdefault(key, []).append(float(r["tflops"]))
+    return [
+        {
+            "kernel": k,
+            "data_format": f,
+            "math_fidelity": m,
+            "tflops": float(np.median(v)),
+        }
+        for (k, f, m), v in runs.items()
+    ]
+
+
 def style_axes(ax):
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -78,7 +95,7 @@ def save(fig, name):
 
 ##### matmul_tiles vs best matmul_block
 
-rows = read_csv(BLOCK / "peak_flops_block_matrix.csv")
+rows = matrix_rows(BLOCK)
 formats = ["BF4", "BF8", "BF16"]
 fidelities = ["LoFi", "HiFi2", "HiFi4"]
 

@@ -3,10 +3,11 @@
 Roofline figure for the paper
 
 Usage:
-    python3 plots/plot_paper_roofline.py [results_dir] [out_dir] [dram_add_dir]
-    defaults: results/  paper/figures/  (none)
+    python3 plots/plot_paper_roofline.py [results_dir] [out_dir] [dram_add_dir] [matmul_dir]
+    defaults: results/  paper/figures/  (none)  results_dir
 
-Reads peak_bandwidth.csv, peak_flops_block_matrix.csv and (optional) ttnn_ops.csv.
+Reads peak_bandwidth.csv and (optional) ttnn_ops.csv from results_dir, and
+peak_flops_block_matrix*.csv from matmul_dir (median over runs).
 The compute roofs use the best matmul_block shape per format and fidelity.
 If dram_add_dir is given, the DRAM slope uses the best copy variant from its dram_add_*.csv
 (mean over runs), if that is higher than peak_bandwidth.csv.
@@ -27,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RESULTS = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "results"
 OUT = Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / "paper" / "figures"
 DRAM_ADD = Path(sys.argv[3]) if len(sys.argv) > 3 else None
+MATMUL = Path(sys.argv[4]) if len(sys.argv) > 4 else RESULTS
 OUT.mkdir(parents=True, exist_ok=True)
 
 THEO_BW_GBS = 288.0
@@ -49,6 +51,23 @@ def read_csv(path):
         return list(csv.DictReader(f))
 
 
+def matrix_rows(folder):
+    runs = {}
+    for path in sorted(folder.glob("peak_flops_block_matrix*.csv")):
+        for r in read_csv(path):
+            key = (r["kernel"], r["data_format"], r["math_fidelity"])
+            runs.setdefault(key, []).append(float(r["tflops"]))
+    return [
+        {
+            "kernel": k,
+            "data_format": f,
+            "math_fidelity": m,
+            "tflops": float(np.median(v)),
+        }
+        for (k, f, m), v in runs.items()
+    ]
+
+
 # my DRAM kernel: best point of the core count sweep
 bw_rows = read_csv(RESULTS / "peak_bandwidth.csv")
 dram_gbs = max(float(r["bw_gbs"]) for r in bw_rows)
@@ -65,10 +84,10 @@ if DRAM_ADD:
 
 # best matmul_block shape per (format, fidelity)
 best = {}
-for r in read_csv(RESULTS / "peak_flops_block_matrix.csv"):
+for r in matrix_rows(MATMUL):
     if r["kernel"].startswith("block"):
         key = (r["data_format"], r["math_fidelity"])
-        best[key] = max(best.get(key, 0.0), float(r["tflops"]))
+        best[key] = max(best.get(key, 0.0), r["tflops"])
 
 ttnn_path = RESULTS / "ttnn_ops.csv"
 ttnn = read_csv(ttnn_path) if ttnn_path.exists() else []
